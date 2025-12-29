@@ -12,6 +12,16 @@ A beautiful terminal-based Pomodoro timer with task management and productivity 
 - **JSON Logging**: All tasks and sessions saved for analysis
 - **Productivity Analytics**: Track your work patterns over time
 
+## Screenshots
+
+### Timer in Action
+![Pomobash Timer Running](screenshots/timer.png)
+*Beautiful terminal interface with real-time countdown and progress bar*
+
+### Task Management
+![Task Management Interface](screenshots/tasks.png)
+*Manage your tasks with progress tracking and completion percentages*
+
 ## Installation
 
 1. Navigate to the project directory:
