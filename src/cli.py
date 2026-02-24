@@ -389,7 +389,7 @@ def cli():
 
 
 @cli.command()
-@click.option('--duration', type=click.Choice(['24', '40', '60']), help='Timer duration in minutes')
+@click.option('--duration', type=click.Choice(['20', '40', '60']), help='Timer duration in minutes')
 @click.option('--task-id', type=str, help='Task ID to work on')
 def start(duration: Optional[str], task_id: Optional[str]):
     """Start a Pomobash timer"""

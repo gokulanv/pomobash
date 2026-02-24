@@ -14,7 +14,7 @@ SESSIONS_FILE = DATA_DIR / "sessions.json"
 
 # Timer configurations (in minutes)
 TIMER_DURATIONS = {
-    "short": 24,
+    "short": 20,
     "medium": 40,
     "long": 60
 }

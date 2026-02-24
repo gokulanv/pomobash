@@ -1,5 +1,6 @@
 """Rich TUI components for Pomobash timer"""
 
+import shutil
 from typing import List, Optional
 from rich.console import Console
 from rich.panel import Panel
@@ -7,11 +8,61 @@ from rich.table import Table
 from rich.progress import Progress, BarColumn, TextColumn
 from rich.layout import Layout
 from rich.text import Text
+from rich.align import Align
 from rich.prompt import Prompt, IntPrompt, Confirm
 
 from .models import Task, TaskStatus, PomodoroSession
 from .timer import PomodoroTimer, TimerState
 from .config import THEME, TIMER_DURATIONS, BREAK_DURATIONS
+
+# Large digit font (height 5) - each digit is a list of 5 strings
+DIGITS_SMALL = {
+    "0": ["┌─┐", "│ │", "│ │", "│ │", "└─┘"],
+    "1": [" ┐ ", " │ ", " │ ", " │ ", " ┘ "],
+    "2": ["┌─┐", "  │", "┌─┘", "│  ", "└─┘"],
+    "3": ["┌─┐", "  │", " ─┤", "  │", "└─┘"],
+    "4": ["┐ ┐", "│ │", "└─┤", "  │", "  ┘"],
+    "5": ["┌─┐", "│  ", "└─┐", "  │", "└─┘"],
+    "6": ["┌─┐", "│  ", "├─┐", "│ │", "└─┘"],
+    "7": ["┌─┐", "  │", "  │", "  │", "  ┘"],
+    "8": ["┌─┐", "│ │", "├─┤", "│ │", "└─┘"],
+    "9": ["┌─┐", "│ │", "└─┤", "  │", "└─┘"],
+    ":": ["   ", " ● ", "   ", " ● ", "   "],
+}
+
+# Large digit font (height 7) for bigger terminals
+DIGITS_LARGE = {
+    "0": ["╔═══╗", "║   ║", "║   ║", "║   ║", "║   ║", "║   ║", "╚═══╝"],
+    "1": ["  ╗  ", "  ║  ", "  ║  ", "  ║  ", "  ║  ", "  ║  ", "  ╝  "],
+    "2": ["╔═══╗", "    ║", "    ║", "╔═══╝", "║    ", "║    ", "╚═══╝"],
+    "3": ["╔═══╗", "    ║", "    ║", " ═══╣", "    ║", "    ║", "╚═══╝"],
+    "4": ["╗   ╗", "║   ║", "║   ║", "╚═══╣", "    ║", "    ║", "    ╝"],
+    "5": ["╔═══╗", "║    ", "║    ", "╚═══╗", "    ║", "    ║", "╚═══╝"],
+    "6": ["╔═══╗", "║    ", "║    ", "╠═══╗", "║   ║", "║   ║", "╚═══╝"],
+    "7": ["╔═══╗", "    ║", "    ║", "    ║", "    ║", "    ║", "    ╝"],
+    "8": ["╔═══╗", "║   ║", "║   ║", "╠═══╣", "║   ║", "║   ║", "╚═══╝"],
+    "9": ["╔═══╗", "║   ║", "║   ║", "╚═══╣", "    ║", "    ║", "╚═══╝"],
+    ":": ["     ", "  ●  ", "     ", "     ", "     ", "  ●  ", "     "],
+}
+
+
+def render_big_time(time_str: str, terminal_width: int) -> str:
+    """Render time string (MM:SS) as large ASCII art, scaled to terminal width."""
+    # Choose font based on terminal width
+    if terminal_width >= 60:
+        digits = DIGITS_LARGE
+    else:
+        digits = DIGITS_SMALL
+
+    height = len(next(iter(digits.values())))
+    lines = [""] * height
+
+    for ch in time_str:
+        glyph = digits.get(ch, digits["0"])
+        for row in range(height):
+            lines[row] += glyph[row] + " "
+
+    return "\n".join(lines)
 
 
 class PomodoroUI:
@@ -28,6 +79,13 @@ class PomodoroUI:
         """Print to console"""
         self.console.print(*args, **kwargs)
 
+    def _get_terminal_width(self) -> int:
+        """Get current terminal width."""
+        try:
+            return shutil.get_terminal_size().columns
+        except Exception:
+            return 80
+
     def render_timer_display(
         self,
         timer: PomodoroTimer,
@@ -35,7 +93,8 @@ class PomodoroUI:
         is_break: bool = False
     ) -> Panel:
         """
-        Render the timer display with progress bar
+        Render the timer display with large ASCII art digits and progress bar.
+        The display scales with the terminal window size.
 
         Args:
             timer: PomodoroTimer instance
@@ -45,6 +104,7 @@ class PomodoroUI:
         Returns:
             Rich Panel with timer display
         """
+        term_width = self._get_terminal_width()
         # Timer type and task info
         timer_type = "BREAK TIME" if is_break else "POMOBASH TIMER"
         color = THEME["break"] if is_break else THEME["timer"]
@@ -52,13 +112,13 @@ class PomodoroUI:
         content = []
 
         # Title
-        title = Text(timer_type, style=f"bold {color}")
+        title = Text(timer_type, style=f"bold {color}", justify="center")
         content.append(title)
         content.append("")
 
         # Task info (if not a break)
         if task and not is_break:
-            task_text = Text(f"Task: {task.title}", style=THEME["task"])
+            task_text = Text(f"Task: {task.title}", style=THEME["task"], justify="center")
             content.append(task_text)
 
             # Progress info
@@ -67,43 +127,46 @@ class PomodoroUI:
                 pomodoro_text += f"/{task.estimated_pomodoros}"
             progress_text = Text(
                 f"Progress: {task.completion_percentage}% | Pomodoros: {pomodoro_text}",
-                style=THEME["info"]
+                style=THEME["info"],
+                justify="center"
             )
             content.append(progress_text)
             content.append("")
 
-        # Time remaining
+        # Large ASCII art time
         remaining = timer.get_remaining_time_formatted()
-        time_text = Text(f"Time Remaining: {remaining}", style=f"bold {color}")
-        content.append(time_text)
+        big_time = render_big_time(remaining, term_width)
+        big_time_text = Text(big_time, style=f"bold {color}", justify="center")
+        content.append(big_time_text)
+        content.append("")
 
-        # Progress bar
+        # Progress bar - scale width to terminal
         progress = timer.get_progress()
-        bar_width = 30
+        bar_width = max(20, min(term_width - 20, 60))
         filled = int(progress * bar_width)
         empty = bar_width - filled
         bar = "█" * filled + "░" * empty
-        bar_text = Text(f"{bar}  {int(progress * 100)}%", style=THEME["progress"])
+        bar_text = Text(f"{bar}  {int(progress * 100)}%", style=THEME["progress"], justify="center")
         content.append(bar_text)
         content.append("")
 
         # State indicator
         if timer.is_paused():
-            state_text = Text("⏸ PAUSED", style=THEME["warning"])
+            state_text = Text("⏸  PAUSED", style=THEME["warning"], justify="center")
             content.append(state_text)
             content.append("")
 
         # Controls
-        controls = "[P]ause [R]estart [S]top [Q]uit"
+        controls = "[P]ause  [R]estart  [S]top  [Q]uit"
         if timer.is_paused():
-            controls = "[P]Resume [R]estart [S]top [Q]uit"
-        content.append(Text(controls, style="dim"))
+            controls = "[P]Resume  [R]estart  [S]top  [Q]uit"
+        content.append(Text(controls, style="dim", justify="center"))
 
         # Combine all content
         panel_content = "\n".join(str(item) for item in content)
 
         return Panel(
-            panel_content,
+            Align.center(panel_content),
             border_style=color,
             padding=(1, 2)
         )
