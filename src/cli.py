@@ -231,21 +231,27 @@ def start_timer_flow(duration: Optional[str] = None, task_id: Optional[str] = No
             tasks = list_tasks()
             if tasks:
                 task_idx = ui.prompt_task_selection(tasks)
-                if task_idx is not None:
+                if task_idx == -1:          # user cancelled
+                    return
+                elif task_idx is not None:  # selected existing task
                     current_task = tasks[task_idx]
                     set_current_task(current_task.id)
+                # task_idx None → fall through to create new task
 
-            # Create new task if needed
             if current_task is None:
                 task_data = ui.prompt_task_creation()
-                current_task = create_task(**task_data)
-                set_current_task(current_task.id)
+                if task_data is not None:
+                    current_task = create_task(**task_data)
+                    set_current_task(current_task.id)
+                # else: proceed with no task
 
     # Get timer duration
     if duration:
         duration_minutes = int(duration)
     else:
         duration_minutes = ui.prompt_timer_duration()
+        if duration_minutes is None:
+            return
 
     # Create and run timer
     ui.clear()
@@ -267,17 +273,18 @@ def start_timer_flow(duration: Optional[str] = None, task_id: Optional[str] = No
         # Offer break
         if ui.confirm("\nTake a break?"):
             break_duration = ui.prompt_break_duration()
-            ui.clear()
-            ui.show_notification(f"Starting {break_duration}-minute break", "break")
+            if break_duration is not None:
+                ui.clear()
+                ui.show_notification(f"Starting {break_duration}-minute break", "break")
 
-            break_timer = PomodoroTimer(break_duration)
-            break_completed = run_timer_loop(break_timer, None, is_break=True)
+                break_timer = PomodoroTimer(break_duration)
+                break_completed = run_timer_loop(break_timer, None, is_break=True)
 
-            # Save break session
-            create_session_record(None, break_duration, break_completed, is_break=True)
+                # Save break session
+                create_session_record(None, break_duration, break_completed, is_break=True)
 
-            if break_completed:
-                handle_timer_completion(None, break_duration, is_break=True)
+                if break_completed:
+                    handle_timer_completion(None, break_duration, is_break=True)
 
 
 def manage_tasks_flow():
@@ -303,9 +310,10 @@ def manage_tasks_flow():
         elif choice == "2":
             # Add new task
             task_data = ui.prompt_task_creation()
-            task = create_task(**task_data)
-            ui.show_notification(f"Task '{task.title}' created!", "completed")
-            time.sleep(1)
+            if task_data is not None:
+                task = create_task(**task_data)
+                ui.show_notification(f"Task '{task.title}' created!", "completed")
+                time.sleep(1)
         elif choice == "3":
             # Update task progress
             if not all_tasks:
@@ -314,7 +322,7 @@ def manage_tasks_flow():
                 continue
 
             task_idx = ui.prompt_task_selection(all_tasks)
-            if task_idx is not None:
+            if task_idx is not None and task_idx >= 0:
                 task = all_tasks[task_idx]
                 new_percentage = ui.prompt_completion_percentage(task.completion_percentage)
                 update_task_progress(task.id, new_percentage)
@@ -328,7 +336,7 @@ def manage_tasks_flow():
                 continue
 
             task_idx = ui.prompt_task_selection(all_tasks)
-            if task_idx is not None:
+            if task_idx is not None and task_idx >= 0:
                 task = all_tasks[task_idx]
                 if ui.confirm(f"Mark '{task.title}' as completed?"):
                     mark_task_completed(task.id)
@@ -342,7 +350,7 @@ def manage_tasks_flow():
                 continue
 
             task_idx = ui.prompt_task_selection(all_tasks)
-            if task_idx is not None:
+            if task_idx is not None and task_idx >= 0:
                 task = all_tasks[task_idx]
                 if ui.confirm(f"Delete '{task.title}'?"):
                     delete_task(task.id)
@@ -421,38 +429,41 @@ def reset():
 @cli.command()
 def interactive():
     """Start interactive mode with main menu"""
-    while True:
-        ui.clear()
+    try:
+        while True:
+            ui.clear()
 
-        # Show today's progress
-        sessions = get_today_sessions()
-        if sessions:
-            summary_panel = ui.render_session_summary(sessions)
-            ui.print(summary_panel)
-            ui.print()
+            # Show today's progress
+            sessions = get_today_sessions()
+            if sessions:
+                summary_panel = ui.render_session_summary(sessions)
+                ui.print(summary_panel)
+                ui.print()
 
-        # Show tasks
-        all_tasks = list_tasks()
-        if all_tasks:
-            table = ui.render_task_list(all_tasks[:5])  # Show top 5
-            ui.print(table)
+            # Show tasks
+            all_tasks = list_tasks()
+            if all_tasks:
+                table = ui.render_task_list(all_tasks[:5])  # Show top 5
+                ui.print(table)
 
-        # Show main menu
-        choice = ui.show_main_menu()
+            # Show main menu
+            choice = ui.show_main_menu()
 
-        if choice == "1":
-            # Start timer - call the flow function directly
-            start_timer_flow()
-        elif choice == "2":
-            # Manage tasks - call the flow function directly
-            manage_tasks_flow()
-        elif choice == "3":
-            # View stats - call the flow function directly
-            show_stats_flow()
-        elif choice == "4":
-            # Exit
-            ui.show_notification("Goodbye!", "info")
-            break
+            if choice == "1":
+                # Start timer - call the flow function directly
+                start_timer_flow()
+            elif choice == "2":
+                # Manage tasks - call the flow function directly
+                manage_tasks_flow()
+            elif choice == "3":
+                # View stats - call the flow function directly
+                show_stats_flow()
+            elif choice == "0":
+                # Exit
+                ui.show_notification("Goodbye!", "info")
+                break
+    except KeyboardInterrupt:
+        ui.show_notification("\nGoodbye!", "info")
 
 
 if __name__ == '__main__':

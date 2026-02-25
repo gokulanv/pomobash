@@ -1,5 +1,8 @@
 """Rich TUI components for Pomobash timer"""
 
+import sys
+import tty
+import termios
 import shutil
 from typing import List, Optional
 from rich.console import Console
@@ -70,6 +73,31 @@ class PomodoroUI:
 
     def __init__(self):
         self.console = Console()
+
+    def _read_single_key(self, prompt_text: str, choices: List[str], default: str = "") -> str:
+        """
+        Read a single keypress from stdin without requiring Enter.
+        Only accepts keys in `choices`. Displays the prompt and echoes the key.
+        """
+        if default:
+            self.console.print(f"{prompt_text} [{default}]: ", end="")
+        else:
+            self.console.print(f"{prompt_text}: ", end="")
+
+        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            tty.setcbreak(sys.stdin.fileno())
+            while True:
+                ch = sys.stdin.read(1).lower()
+                if ch in choices:
+                    self.console.print(ch)
+                    return ch
+                elif ch in ("\r", "\n") and default:
+                    self.console.print(default)
+                    return default
+                # ignore invalid keys
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
     def clear(self):
         """Clear the console"""
@@ -272,9 +300,9 @@ class PomodoroUI:
         self.print("[1] Start Timer")
         self.print("[2] Manage Tasks")
         self.print("[3] View Stats")
-        self.print("[4] Exit")
+        self.print("[0] Exit")
 
-        choice = Prompt.ask("\nChoose an option", choices=["1", "2", "3", "4"], default="1")
+        choice = self._read_single_key("\nChoose an option", choices=["0", "1", "2", "3"], default="1")
         return choice
 
     def show_task_menu(self) -> str:
@@ -292,22 +320,29 @@ class PomodoroUI:
         self.print("[5] Delete task")
         self.print("[0] Back")
 
-        choice = Prompt.ask("\nChoose an option", choices=["0", "1", "2", "3", "4", "5"], default="1")
+        choice = self._read_single_key("\nChoose an option", choices=["0", "1", "2", "3", "4", "5"], default="1")
         return choice
 
-    def prompt_timer_duration(self) -> int:
+    def prompt_timer_duration(self) -> Optional[int]:
         """
         Prompt user to select timer duration
 
         Returns:
-            Duration in minutes
+            Duration in minutes, or None if cancelled
         """
         self.print("\n[bold]Select Timer Duration:[/bold]")
+        self.print("[0] Back")
         self.print(f"[1] Short ({TIMER_DURATIONS['short']} minutes)")
         self.print(f"[2] Medium ({TIMER_DURATIONS['medium']} minutes)")
         self.print(f"[3] Long ({TIMER_DURATIONS['long']} minutes)")
+        self.print("[4] Custom...")
 
-        choice = Prompt.ask("Duration", choices=["1", "2", "3"], default="1")
+        choice = self._read_single_key("Duration", choices=["0", "1", "2", "3", "4"], default="1")
+
+        if choice == "0":
+            return None
+        if choice == "4":
+            return IntPrompt.ask("Custom duration (minutes)", default=25)
 
         duration_map = {
             "1": TIMER_DURATIONS["short"],
@@ -317,19 +352,26 @@ class PomodoroUI:
 
         return duration_map[choice]
 
-    def prompt_break_duration(self) -> int:
+    def prompt_break_duration(self) -> Optional[int]:
         """
         Prompt user to select break duration
 
         Returns:
-            Duration in minutes
+            Duration in minutes, or None if skipped
         """
         self.print("\n[bold]Select Break Duration:[/bold]")
+        self.print("[0] Skip break")
         self.print(f"[1] Short ({BREAK_DURATIONS['short']} minutes)")
         self.print(f"[2] Medium ({BREAK_DURATIONS['medium']} minutes)")
         self.print(f"[3] Long ({BREAK_DURATIONS['long']} minutes)")
+        self.print("[4] Custom...")
 
-        choice = Prompt.ask("Break", choices=["1", "2", "3"], default="1")
+        choice = self._read_single_key("Break", choices=["0", "1", "2", "3", "4"], default="1")
+
+        if choice == "0":
+            return None
+        if choice == "4":
+            return IntPrompt.ask("Custom duration (minutes)", default=5)
 
         duration_map = {
             "1": BREAK_DURATIONS["short"],
@@ -347,39 +389,46 @@ class PomodoroUI:
             tasks: List of available tasks
 
         Returns:
-            Task index (0-based) or None for new task
+            Task index (0-based), None for new task, or -1 for cancel/back
         """
         if not tasks:
             return None
 
         self.print("\n[bold]Select a task:[/bold]")
+        self.print("[0] Back")
         for i, task in enumerate(tasks, 1):
             status = "✓" if task.status == TaskStatus.COMPLETED else "▶" if task.status == TaskStatus.IN_PROGRESS else "○"
             self.print(f"[{i}] {status} {task.title} ({task.completion_percentage}%)")
 
-        self.print("[0] Create new task")
+        self.print(f"[{len(tasks)+1}] Create new task")
 
-        max_choice = len(tasks)
-        choice = IntPrompt.ask("Task", default=1)
+        max_choice = len(tasks) + 1
+        valid_choices = [str(i) for i in range(0, max_choice + 1)]
+        raw = self._read_single_key("Task", choices=valid_choices, default="1")
+        choice = int(raw)
 
         if choice == 0:
+            return -1
+        elif choice == max_choice:
             return None
-        elif 1 <= choice <= max_choice:
+        elif 1 <= choice <= len(tasks):
             return choice - 1
         else:
             self.print(f"[{THEME['warning']}]Invalid choice[/]")
-            return None
+            return -1
 
-    def prompt_task_creation(self) -> dict:
+    def prompt_task_creation(self) -> Optional[dict]:
         """
         Prompt user to create a new task
 
         Returns:
-            Dictionary with task details
+            Dictionary with task details, or None if cancelled
         """
         self.print("\n[bold]Create New Task[/bold]")
 
-        title = Prompt.ask("Task title")
+        title = Prompt.ask("Task title (leave blank to cancel)", default="")
+        if not title.strip():
+            return None
         description = Prompt.ask("Description (optional)", default="")
         estimated = Prompt.ask("Estimated pomodoros (optional)", default="")
 
