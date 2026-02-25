@@ -300,9 +300,9 @@ class PomodoroUI:
         self.print("[1] Start Timer")
         self.print("[2] Manage Tasks")
         self.print("[3] View Stats")
-        self.print("[4] Exit")
+        self.print("[0] Exit")
 
-        choice = self._read_single_key("\nChoose an option", choices=["1", "2", "3", "4"], default="1")
+        choice = self._read_single_key("\nChoose an option", choices=["0", "1", "2", "3"], default="1")
         return choice
 
     def show_task_menu(self) -> str:

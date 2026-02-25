@@ -458,7 +458,7 @@ def interactive():
             elif choice == "3":
                 # View stats - call the flow function directly
                 show_stats_flow()
-            elif choice == "4":
+            elif choice == "0":
                 # Exit
                 ui.show_notification("Goodbye!", "info")
                 break
